@@ -126,3 +126,8 @@ modules.xml
 
 # Sonarlint plugin
 .idea/sonarlint
+
+
+## personal add
+
+temp/
