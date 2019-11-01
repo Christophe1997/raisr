@@ -1,5 +1,6 @@
 import cv2 as cv
 import numpy as np
+from raisr.hash_key_gen import HashKeyGen
 
 
 class RAISR:
@@ -23,8 +24,7 @@ class RAISR:
         self.strength_base = strength_base
         self.coherence_base = coherence_base
 
-        self.J_NUM = angle_base * strength_base * coherence_base
-        self.T_NUM = upscale_factor * upscale_factor
+        self.hash_key_gen = HashKeyGen(angle_base, strength_base, coherence_base)
 
     def __repr__(self):
         return f"<RAISR up_factor={self.up_factor}>"
