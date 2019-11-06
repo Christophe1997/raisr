@@ -14,20 +14,15 @@ import time
 class RAISR:
 
     def __init__(self, upscale_factor=2,
-                 enhance_hr=None, enhance_lr=None,
                  angle_base=24, strength_base=3, coherence_base=3):
         """RAISR model
 
         :param upscale_factor: upsampling factor;
-        :param enhance_hr: method that used to enhance HR image
-        :param enhance_lr: method that used to enhance LR image
         :param angle_base: factor for angle
         :param strength_base: factor for strength
         :param coherence_base: factor for coherence
         """
         self.up_factor = upscale_factor
-        self.enhance_hr = enhance_hr
-        self.enhance_lr = enhance_lr
         self.angle_base = angle_base
         self.strength_base = strength_base
         self.coherence_base = coherence_base
@@ -106,7 +101,7 @@ class RAISR:
             lr_y = cv.cvtColor(lr, cv.COLOR_BGR2YCrCb)[:, :, 0]
             hr_y = cv.cvtColor(hr, cv.COLOR_BGR2YCrCb)[:, :, 0]
             # Upscale and pad the image
-            h, w = lr_y
+            h, w = lr_y.shape
             lr_y_upscaled_padded = cv.copyMakeBorder(cv.resize(lr_y, (w * self.up_factor, h * self.up_factor)),
                                                      top_pad, bottom_pad, top_pad, bottom_pad, cv.BORDER_REPLICATE)
             # optionally sharpen
@@ -114,7 +109,7 @@ class RAISR:
                 hr_y = cv.filter2D(hr_y, -1, UNSHARP_MASKING_5x5_KERNEL, borderType=cv.BORDER_REPLICATE)
             ret.append((lr_y_upscaled_padded, hr_y))
 
-            print("*****END TO PROCESS {}/{} img at {}*****\n".format(
+            print("*****END   TO PROCESS {}/{} image at {}*****\n".format(
                 idx, total, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
         timestamp = time.mktime(datetime.now().timetuple())
@@ -124,7 +119,7 @@ class RAISR:
         with open(dump_path, "wb") as f:
             pickle.dump(ret, f)
 
-        print("***** FINISH PROCESS, RESULT DUMP TO {}*****\n".format(dump_path))
+        print("*****FINISH PROCESS, RESULT DUMP TO {}*****\n".format(dump_path))
 
     def cheap_upscale(self, image: np.ndarray, interpolation=cv.INTER_LINEAR) -> np.ndarray:
         hight, width = image.shape[:2]
