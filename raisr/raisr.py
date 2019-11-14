@@ -61,8 +61,7 @@ class RAISR:
     def preprocess(self, lr_path: str, hr_path: str,
                    patch_size: int = 7,
                    dst: str = "./train",
-                   sharpen: bool = True,
-                   ):
+                   sharpen: bool = True):
         """Process origin images, both of LR images and HR images
         It only extrat the luminance in YCrCb mode of a image, it also cheaply upscale and pad the LR images
         for trainning requirements. And write the result to dst.
