@@ -17,7 +17,7 @@ class HashKeyGen:
     def __repr__(self):
         return f"<HashKeyGen ({self.angle_base}, {self.strength_base}, {self.coherence_base})>"
 
-    def gen_hash_key(self, patch: np.ndarray, ) -> Tuple[int, int, int]:
+    def gen_hash_key(self, patch: np.ndarray) -> Tuple[int, int, int]:
         # Compute the gradient
         g_y, g_x = np.gradient(patch)
         g_x: np.ndarray = g_x.ravel()
