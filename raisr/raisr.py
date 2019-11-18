@@ -1,6 +1,5 @@
 import cv2 as cv
 import numpy as np
-from typing import Tuple
 from sklearn.feature_extraction.image import extract_patches_2d
 from raisr.utils import is_image
 import os
@@ -10,6 +9,7 @@ from raisr.processor import UNSHARP_MASKING_5x5_KERNEL, gaussian_kernel_2d
 from datetime import datetime
 import time
 from collections import defaultdict
+from scipy.sparse.linalg import cg
 
 
 class RAISR:
@@ -31,7 +31,7 @@ class RAISR:
     def __repr__(self):
         return f"<RAISR up_factor={self.up_factor}>"
 
-    def train(self, img_pairs, patch_size=7):
+    def train(self, img_pairs, patch_size=7, dst="./model"):
         # initialization
         d2 = patch_size ** 2
         t2 = self.up_factor ** 2
@@ -45,17 +45,22 @@ class RAISR:
         V = np.zeros((axis0, axis1, axis2, t2, d2, 1))
         H = np.zeros((axis0, axis1, axis2, t2, patch_size, patch_size))
 
+        total = len(img_pairs)
+        print(f"*****START TO TRAIN RAISR FOR {total} IMAGE PAIRS*****\n")
         # TODO: can be paralleled
-        for cheap_hr_padded, hr in img_pairs:
+        for idx, (cheap_hr_padded, hr) in enumerate(img_pairs):
+            print("*****START TO PROCESS {}/{} IMAGE PAIR AT {}*****".format(
+                idx, total, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+
             h, w = hr.sahpe
             patchs = extract_patches_2d(cheap_hr_padded, (patch_size, patch_size))
             A = defaultdict(lambda: None)
             b = defaultdict(lambda: None)
             # TODO: can be paralleled
-            for idx, patch in enumerate(patchs):
+            for idx1, patch in enumerate(patchs):
                 # origin coordinate
-                x = idx // w
-                y = idx % w
+                x = idx1 // w
+                y = idx1 % w
 
                 # compute pixel type
                 t = x % self.up_factor * self.up_factor + y % self.up_factor
@@ -96,13 +101,32 @@ class RAISR:
                     V[angle, *j[1:], t] += a_T_b
                     a_T_a = np.rot90(a_T_a)
 
+            print("*****END   TO PROCESS {}/{} IMAGE AT {}*****\n".format(
+                idx, total, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+
+        print(f"*****START TO SOLVE THE OPTIMIZATION PROBLEM AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*****")
         # compute H
         for angle in range(axis0):
             for coherence in range(axis1):
                 for strength in range(axis2):
                     for t in range(t2):
-                        # TODO
-                        pass
+                        # solve the optimization problem by a conjugate gradient solver
+                        h_vec = cg(Q[angle, coherence, strength], V[angle, coherence, strength])
+                        H[angle, coherence, strength] = h_vec.reshape((patch_size, patch_size))
+        print(f"*****END   TO SOLVE THE OPTIMIZATION PROBLEM AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*****\n")
+
+        # write the filter
+        timestamp = time.mktime(datetime.now().timetuple())
+        if not os.path.exists(dst):
+            os.mkdir(dst)
+        dump_path = os.path.join(dst, "raisr_filter_{}x{}_{}x{}x{}x{}_{:.0f}.pkl".format(
+            patch_size, patch_size,
+            axis0, axis1, axis2, t2,
+            timestamp))
+        with open(dump_path, "wb") as f:
+            pickle.dump(H, f)
+
+        print("*****FINISH TRAIN, RESULT DUMP TO {}*****\n".format(dump_path))
 
     def preprocess(self, lr_path: str, hr_path: str,
                    patch_size: int = 7,
@@ -136,7 +160,7 @@ class RAISR:
         total = len(lr_files)
         print(f"*****START TO PROCESS {total} images*****\n")
         for idx, lr_fname in enumerate(lr_files):
-            print("*****START TO PROCESS {}/{} image at {}*****".format(
+            print("*****START TO PROCESS {}/{} IMAGE AT {}*****".format(
                 idx, total, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
             hr_fname = hr_filrs[idx]
@@ -154,7 +178,7 @@ class RAISR:
                 hr_y = cv.filter2D(hr_y, -1, UNSHARP_MASKING_5x5_KERNEL, borderType=cv.BORDER_REPLICATE)
             ret.append((lr_y_upscaled_padded, hr_y))
 
-            print("*****END   TO PROCESS {}/{} image at {}*****\n".format(
+            print("*****END   TO PROCESS {}/{} IMAGE AT {}*****\n".format(
                 idx, total, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
         timestamp = time.mktime(datetime.now().timetuple())
