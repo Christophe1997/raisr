@@ -99,15 +99,17 @@ class RAISR:
                 rot90 = self.angle_base // 4
                 for i in range(4):
                     angle = (j[0] + i * rot90) % self.angle_base
-                    Q[angle, *j[1:], t] += a_T_a
-                    V[angle, *j[1:], t] += a_T_b
+                    coherence, strength = j[1:]
+                    Q[angle, coherence, strength, t] += a_T_a
+                    V[angle, coherence, strength, t] += a_T_b
                     a_T_a = np.rot90(a_T_a)
                 a_T_a = np.flipud(a_T_a)
                 flipud = self.angle_base - j[0]
                 for i in range(4):
                     angle = (flipud + i * rot90) % self.angle_base
-                    Q[angle, *j[1:], t] += a_T_a
-                    V[angle, *j[1:], t] += a_T_b
+                    coherence, strength = j[1:]
+                    Q[angle, coherence, strength, t] += a_T_a
+                    V[angle, coherence, strength, t] += a_T_b
                     a_T_a = np.rot90(a_T_a)
 
             print("*****END   TO PROCESS {}/{} IMAGE AT {}*****\n".format(
@@ -252,8 +254,8 @@ class RAISR:
             # compute pixel type
             t = x % self.up_factor * self.up_factor + y % self.up_factor
             # conpute hash key j
-            j = self.hash_key_gen.gen_hash_key(patch)
-            filter1d = self.H[*j, t]
+            angle, coherence, strength = self.hash_key_gen.gen_hash_key(patch)
+            filter1d = self.H[angle, coherence, strength, t]
             hr_y[x, y] = patch.T.dot(filter1d)
 
         # de-standardlize
