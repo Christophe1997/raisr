@@ -55,6 +55,7 @@ class RAISR:
         H = np.zeros((axis0, axis1, axis2, t2, d2, 1))
 
         total = len(img_pairs)
+        start = datetime.now()
         print(f"*****START TO TRAIN RAISR FOR {total} IMAGE PAIRS*****\n")
         # TODO: can be paralleled
         for idx, (cheap_hr_padded, hr) in enumerate(img_pairs):
@@ -127,7 +128,8 @@ class RAISR:
         print(f"*****END   TO SOLVE THE OPTIMIZATION PROBLEM AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*****\n")
 
         # write the filter
-        timestamp = time.mktime(datetime.now().timetuple())
+        end = datetime.now()
+        timestamp = time.mktime(end.timetuple())
         if not os.path.exists(dst):
             os.mkdir(dst)
         dump_path = os.path.join(dst, "raisr_filter_{}x{}_{}x{}x{}x{}_{:.0f}.pkl".format(
@@ -141,7 +143,7 @@ class RAISR:
         self.patch_size = patch_size
         self.hash_key_gen = hash_key_gen
 
-        print("*****FINISH TRAIN, RESULT DUMP TO {}*****\n".format(dump_path))
+        print("*****FINISH TRAIN, COSTS {}s, RESULT DUMP TO {}*****\n".format((end - start).total_seconds(), dump_path))
 
     def preprocess(self, lr_path: str, hr_path: str,
                    patch_size: int = 7,
@@ -173,6 +175,7 @@ class RAISR:
 
         ret = []
         total = len(lr_files)
+        start = datetime.now()
         print(f"*****START TO PROCESS {total} images*****\n")
         for idx, lr_fname in enumerate(lr_files):
             print("*****START TO PROCESS {}/{} IMAGE AT {}*****".format(
@@ -186,29 +189,31 @@ class RAISR:
             hr_y = cv.cvtColor(hr, cv.COLOR_BGR2YCrCb)[:, :, 0]
 
             # standardlize
-            lr_y_standed = (lr_y - lr_y.mean()) / lr_y.std()
-            hr_y_standed = (hr_y - hr_y.mean()) / hr_y.std()
+            lr_y = (lr_y - lr_y.mean()) / lr_y.std()
+            hr_y = (hr_y - hr_y.mean()) / hr_y.std()
             # Upscale and pad the image
             h, w = lr_y.shape
-            lr_y_standed_upscaled_padded = cv.copyMakeBorder(
-                cv.resize(lr_y_standed, (w * self.up_factor, h * self.up_factor)),
-                top_pad, bottom_pad, top_pad, bottom_pad, cv.BORDER_REPLICATE)
+            lr_y = cv.copyMakeBorder(
+                cv.resize(lr_y, (w * self.up_factor, h * self.up_factor)),
+                top_pad, bottom_pad, top_pad, bottom_pad, borderType=cv.BORDER_REPLICATE)
             # optionally sharpen
             if sharpen:
-                hr_y_standed = cv.filter2D(hr_y_standed, -1, UNSHARP_MASKING_5x5_KERNEL, borderType=cv.BORDER_REPLICATE)
-            ret.append((lr_y_standed_upscaled_padded, hr_y_standed))
+                hr_y = cv.filter2D(hr_y, -1, UNSHARP_MASKING_5x5_KERNEL, borderType=cv.BORDER_REPLICATE)
+            ret.append((lr_y, hr_y))
 
             print("*****END   TO PROCESS {}/{} IMAGE AT {}*****\n".format(
                 idx, total, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
-        timestamp = time.mktime(datetime.now().timetuple())
+        end = datetime.now()
+        timestamp = time.mktime(end.timetuple())
         if not os.path.exists(dst):
             os.mkdir(dst)
         dump_path = os.path.join(dst, "raisr_train_data_{:.0f}.pkl".format(timestamp))
         with open(dump_path, "wb") as f:
             pickle.dump(ret, f)
 
-        print("*****FINISH PROCESS, RESULT DUMP TO {}*****\n".format(dump_path))
+        print("*****FINISH PREPROCESS, COSTS {}s, RESULT DUMP TO {}*****\n".format((end - start).total_seconds(),
+                                                                                   dump_path))
 
     def cheap_upscale(self, image: np.ndarray, interpolation=cv.INTER_LINEAR) -> np.ndarray:
         hight, width = image.shape[:2]
