@@ -49,7 +49,20 @@ class HashKeyGen:
 
         # Transform to integer via base
         angle = np.floor(theta / np.pi * self.angle_base)
+        if angle == self.angle_base:
+            angle -= 1
         coherence = np.floor(u * self.coherence_base)
-        strength = np.floor((w[0] / np.sum(w)) * self.strength_base)
+        if coherence == self.coherence_base:
+            coherence -= 1
+        strength = np.floor(w[0] / np.sum(w) * self.strength_base)
+        if strength == self.strength_base:
+            strength -= 1
+
+        if np.isnan(angle):
+            angle = 0
+        if np.isnan(coherence):
+            coherence = 0
+        if np.isnan(strength):
+            strength = 0
 
         return int(angle), int(coherence), int(strength)
