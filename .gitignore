@@ -131,3 +131,5 @@ modules.xml
 ## personal add
 
 temp/
+tests/
+setup.py
