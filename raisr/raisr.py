@@ -10,7 +10,6 @@ from datetime import datetime
 import time
 from scipy.sparse.linalg import cg
 from pathos import multiprocessing as mp
-import shutil
 
 
 class RAISR:
@@ -44,13 +43,10 @@ class RAISR:
         VS_DIR = os.path.join(dst, "Vs")
         if not os.path.exists(dst):
             os.mkdir(dst)
-        if os.path.exists(QS_DIR):
-            shutil.rmtree(QS_DIR)
-        if os.path.exists(VS_DIR):
-            shutil.rmtree(VS_DIR)
-
-        os.mkdir(QS_DIR)
-        os.mkdir(VS_DIR)
+        if not os.path.exists(QS_DIR):
+            os.mkdir(QS_DIR)
+        if not os.path.exists(VS_DIR):
+            os.mkdir(VS_DIR)
 
         d2 = self.patch_size ** 2
         t2 = self.up_factor ** 2
@@ -89,11 +85,15 @@ class RAISR:
             lr_y = cv.cvtColor(lr_upscaled, cv.COLOR_BGR2YCrCb)[:, :, 0]
             hr_y = cv.cvtColor(hr, cv.COLOR_BGR2YCrCb)[:, :, 0]
 
+            # normalize
+            lr_y = (lr_y - lr_y.min()) / (lr_y.max() - lr_y.min())
             # Pad the image
             lr_y = cv.copyMakeBorder(lr_y, top_pad, bottom_pad, top_pad, bottom_pad, borderType=cv.BORDER_REPLICATE)
             # optionally sharpen
             if sharpen:
                 hr_y = cv.filter2D(hr_y, -1, UNSHARP_MASKING_5x5_KERNEL, borderType=cv.BORDER_REPLICATE)
+
+            hr_y = (hr_y - hr_y.min()) / (hr_y.max() - hr_y.min())
 
             patches = extract_patches_2d(lr_y, (self.patch_size, self.patch_size))
 
@@ -135,18 +135,18 @@ class RAISR:
 
             with open(f"{VS_DIR}/V_{lr_fname}.dat", "wb") as V_f:
                 pickle.dump(V, V_f)
-            print("*****END   TO PROCESS {}/{} IMAGE PAIR AT {}*****\n".format(
+            print("*****END   TO PROCESS {}/{} IMAGE PAIR AT {}*****".format(
                 idx + 1, total, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
         with mp.Pool() as ps:
             ps.map(f, enumerate(lr_files))
 
         print(f"*****START TO SOLVE THE OPTIMIZATION PROBLEM AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*****")
-        for Q_f in os.listdir("./data/Qs"):
-            with open(f"./data/Qs/{Q_f}", "rb") as f:
+        for Q_f in os.listdir(f"{QS_DIR}"):
+            with open(f"{QS_DIR}/{Q_f}", "rb") as f:
                 Q += pickle.load(f)
-        for V_f in os.listdir("./data/Vs"):
-            with open(f"./data/Vs/{V_f}", "rb") as f:
+        for V_f in os.listdir(f"{VS_DIR}"):
+            with open(f"{VS_DIR}/{V_f}", "rb") as f:
                 V += pickle.load(f)
         # compute H
         for angle in range(self.angle_base):
@@ -155,7 +155,6 @@ class RAISR:
                 h_vec, _ = cg(Q[angle, t], V[angle, t])
                 H[angle, t] = h_vec.reshape((-1, 1))
         print(f"*****END   TO SOLVE THE OPTIMIZATION PROBLEM AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*****\n")
-
         # write the filter
         end = datetime.now()
         timestamp = time.mktime(end.timetuple())
@@ -168,8 +167,6 @@ class RAISR:
             pickle.dump(H, f)
 
         self.H = H
-        shutil.rmtree(QS_DIR)
-        shutil.rmtree(VS_DIR)
         print("*****FINISH TRAIN, COSTS {}s, RESULT DUMP TO {}*****\n".format((end - start).total_seconds(), dump_path))
 
     def cheap_upscale(self, image: np.ndarray, interpolation=cv.INTER_LINEAR) -> np.ndarray:
@@ -207,11 +204,14 @@ class RAISR:
         y = img_upscaled_ycrcb[:, :, 0]
         crcb = img_upscaled_ycrcb[:, :, 1:]
 
-        # fit the HR y channel
-
+        # normalize
+        m = y.max()
+        n = y.min()
+        y = (y - n) / (m - n)
         y_padded = cv.copyMakeBorder(y, top_pad, bottom_pad, top_pad, bottom_pad, cv.BORDER_REPLICATE)
 
         start = datetime.now()
+        # fit the HR y channel
         patches = extract_patches_2d(y_padded, (self.patch_size, self.patch_size))
 
         def f(item):
@@ -230,7 +230,8 @@ class RAISR:
             ret = ps.map(f, enumerate(patches))
 
         hr_y = np.array(ret).reshape((h, w))
-
+        # de-normalize
+        hr_y = hr_y * (m - n) + n
         # cheap upscale the left two channel
         hr_ycrcb = np.dstack((hr_y.astype(np.uint8), crcb))
         end = datetime.now()
