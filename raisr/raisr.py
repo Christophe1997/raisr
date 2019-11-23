@@ -1,15 +1,15 @@
 import cv2 as cv
 import numpy as np
 from sklearn.feature_extraction.image import extract_patches_2d
-from raisr.utils import is_image
+from raisr.utils import is_image, build_goal_func
 import os
 import pickle
 from raisr.hash_key_gen import gen_hash_key
 from raisr.processor import UNSHARP_MASKING_5x5_KERNEL, gaussian_kernel_2d
 from datetime import datetime
 import time
-from scipy.sparse.linalg import cg
 from pathos import multiprocessing as mp
+from scipy.optimize import minimize
 
 
 class RAISR:
@@ -152,8 +152,9 @@ class RAISR:
         for angle in range(self.angle_base):
             for t in range(t2):
                 # solve the optimization problem by a conjugate gradient solver
-                h_vec, _ = cg(Q[angle, t], V[angle, t])
-                H[angle, t] = h_vec.reshape((-1, 1))
+                goal_func = build_goal_func(Q[angle, t], V[angle, t])
+                res = minimize(goal_func, np.random.random((d2, 1)), method='CG')
+                H[angle, t] = res.x[:, np.newaxis]
         print(f"*****END   TO SOLVE THE OPTIMIZATION PROBLEM AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*****\n")
         # write the filter
         end = datetime.now()
@@ -231,6 +232,7 @@ class RAISR:
 
         hr_y = np.array(ret).reshape((h, w))
         # de-normalize
+        print(hr_y)
         hr_y = hr_y * (m - n) + n
         # cheap upscale the left two channel
         hr_ycrcb = np.dstack((hr_y.astype(np.uint8), crcb))
