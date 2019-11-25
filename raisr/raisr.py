@@ -15,7 +15,7 @@ from scipy.optimize import minimize
 class RAISR:
 
     def __init__(self, upscale_factor=2,
-                 angle_base=36, patch_size=7):
+                 angle_base=24, coherence_base=3, strength_base=3, patch_size=9):
         """RAISR model
 
         :param upscale_factor: upsampling factor;
@@ -23,6 +23,8 @@ class RAISR:
         """
         self.up_factor = upscale_factor
         self.angle_base = angle_base
+        self.coherence_base = coherence_base
+        self.strength_base = strength_base
         self.patch_size = patch_size
         self.weight = gaussian_kernel_2d((patch_size ** 2, patch_size ** 2), 2)
         self.H = None
@@ -51,9 +53,9 @@ class RAISR:
         d2 = self.patch_size ** 2
         t2 = self.up_factor ** 2
 
-        Q = np.zeros((self.angle_base, t2, d2, d2))
-        V = np.zeros((self.angle_base, t2, d2, 1))
-        H = np.zeros((self.angle_base, t2, d2, 1))
+        Q = np.zeros((self.angle_base, self.coherence_base, self.strength_base, t2, d2, d2))
+        V = np.zeros((self.angle_base, self.coherence_base, self.strength_base, t2, d2, 1))
+        H = np.zeros((self.angle_base, self.coherence_base, self.strength_base, t2, d2, 1))
 
         # compute pad pixel
         # left is same as top, and right is same as bottom
@@ -105,7 +107,8 @@ class RAISR:
                 # compute pixel type
                 t = x % self.up_factor * self.up_factor + y % self.up_factor
                 # conpute hash key j
-                angle = gen_hash_key(patch, self.angle_base, self.weight)
+                angle, coherence, strength = gen_hash_key(patch, self.angle_base, self.coherence_base,
+                                                          self.strength_base, self.weight)
                 patch: np.ndarray
                 # compute p_k
                 a = patch.ravel().reshape((1, -1))
@@ -119,15 +122,15 @@ class RAISR:
                 rot90 = self.angle_base // 4
                 for i in range(4):
                     angle1 = (angle + i * rot90) % self.angle_base
-                    Q[angle1, t] += a_T_a
-                    V[angle1, t] += a_T_b
+                    Q[angle1, coherence, strength, t] += a_T_a
+                    V[angle1, coherence, strength, t] += a_T_b
                     a_T_a = np.rot90(a_T_a)
                 a_T_a = np.flipud(a_T_a)
                 flipud = self.angle_base - angle
                 for i in range(4):
                     angle1 = (flipud + i * rot90) % self.angle_base
-                    Q[angle1, t] += a_T_a
-                    V[angle1, t] += a_T_b
+                    Q[angle1, coherence, strength, t] += a_T_a
+                    V[angle1, coherence, strength, t] += a_T_b
                     a_T_a = np.rot90(a_T_a)
 
             with open(f"{QS_DIR}/Q_{lr_fname}.dat", "wb") as Q_f:
@@ -150,11 +153,14 @@ class RAISR:
                 V += pickle.load(f)
         # compute H
         for angle in range(self.angle_base):
-            for t in range(t2):
-                # solve the optimization problem by a conjugate gradient solver
-                goal_func = build_goal_func(Q[angle, t], V[angle, t])
-                res = minimize(goal_func, np.random.random((d2, 1)), method='CG')
-                H[angle, t] = res.x[:, np.newaxis]
+            for coherence in range(self.coherence_base):
+                for strength in range(self.strength_base):
+                    for t in range(t2):
+                        # solve the optimization problem by a conjugate gradient solver
+                        goal_func = build_goal_func(Q[angle, coherence, strength, t],
+                                                    V[angle, coherence, strength, t])
+                        res = minimize(goal_func, np.random.random((d2, 1)), method='BFGS')
+                        H[angle, coherence, strength, t] = res.x[:, np.newaxis]
         print(f"*****END   TO SOLVE THE OPTIMIZATION PROBLEM AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*****\n")
         # write the filter
         end = datetime.now()
@@ -223,8 +229,9 @@ class RAISR:
             # compute pixel type
             t = x % self.up_factor * self.up_factor + y % self.up_factor
             # conpute hash key j
-            angle = gen_hash_key(patch, self.angle_base, self.weight)
-            filter1d = self.H[angle, t]
+            angle, coherence, strength = gen_hash_key(patch, self.angle_base, self.coherence_base, self.strength_base,
+                                                      self.weight)
+            filter1d = self.H[angle, coherence, strength, t]
             return patch.ravel().T.dot(filter1d)
 
         with mp.Pool() as ps:
@@ -232,7 +239,6 @@ class RAISR:
 
         hr_y = np.array(ret).reshape((h, w))
         # de-normalize
-        print(hr_y)
         hr_y = hr_y * (m - n) + n
         # cheap upscale the left two channel
         hr_ycrcb = np.dstack((hr_y.astype(np.uint8), crcb))
