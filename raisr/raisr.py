@@ -162,9 +162,9 @@ class RAISR:
         end = datetime.now()
         timestamp = time.mktime(end.timetuple())
 
-        dump_path = os.path.join(dst, "raisr_filter_{}x{}_{}x{}_{:.0f}.pkl".format(
+        dump_path = os.path.join(dst, "raisr_filter_{}x{}_{}x{}x{}_{:.0f}.pkl".format(
             self.patch_size, self.patch_size,
-            self.angle_base, t2,
+            self.angle_base, self.strength_base,  t2,
             timestamp))
         with open(dump_path, "wb") as f:
             pickle.dump(H, f)
