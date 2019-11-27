@@ -32,15 +32,9 @@ def gen_hash_key(patch: np.ndarray, angle_base, coherence_base, strength_base, w
         theta += np.pi
 
     # Transform to integer via base
-    angle = np.floor(theta / np.pi * angle_base)
-    if angle == angle_base:
-        angle -= 1
-    coherence = np.floor(u * coherence_base)
-    if coherence == coherence_base:
-        coherence -= 1
-    strength = np.floor(w[0] / np.sum(w) * strength_base)
-    if strength == strength_base:
-        strength -= 1
+    angle = np.floor(theta / np.pi * angle_base) % angle_base
+    coherence = np.floor(u * coherence_base) % coherence_base
+    strength = np.floor(w[0] / np.sum(w) * strength_base) % strength_base
 
     if np.isnan(angle):
         angle = 0
