@@ -5,7 +5,7 @@ from raisr.utils import is_image, build_goal_func
 import os
 import pickle
 from raisr.hash_key_gen import gen_hash_key
-from raisr.processor import UNSHARP_MASKING_5x5_KERNEL, gaussian_kernel_2d
+from raisr.processor import UNSHARP_MASKING_5x5_KERNEL
 from datetime import datetime
 import time
 from pathos import multiprocessing as mp
@@ -149,14 +149,16 @@ class RAISR:
             with open(f"{VS_DIR}/{V_f}", "rb") as f:
                 V += pickle.load(f)
         # compute H
+
         for angle in range(self.angle_base):
-                for strength in range(self.strength_base):
-                    for t in range(t2):
-                        # solve the optimization problem by a conjugate gradient solver
-                        goal_func = build_goal_func(Q[angle, strength, t],
-                                                    V[angle, strength, t])
-                        res = minimize(goal_func, np.random.random((d2, 1)), method='BFGS')
-                        H[angle, strength, t] = res.x[:, np.newaxis]
+            for strength in range(self.strength_base):
+                for t in range(t2):
+                    # solve the optimization problem by a conjugate gradient solver
+                    print(Q[angle, strength, t], V[angle, strength, t])
+                    goal_func = build_goal_func(Q[angle, strength, t],
+                                                V[angle, strength, t])
+                    res = minimize(goal_func, np.random.random((d2, 1)), method='CG')
+                    H[angle, strength, t] = res.x[:, np.newaxis]
         print(f"*****END   TO SOLVE THE OPTIMIZATION PROBLEM AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*****\n")
         # write the filter
         end = datetime.now()
@@ -164,7 +166,7 @@ class RAISR:
 
         dump_path = os.path.join(dst, "raisr_filter_{}x{}_{}x{}x{}_{:.0f}.pkl".format(
             self.patch_size, self.patch_size,
-            self.angle_base, self.strength_base,  t2,
+            self.angle_base, self.strength_base, t2,
             timestamp))
         with open(dump_path, "wb") as f:
             pickle.dump(H, f)
@@ -192,7 +194,7 @@ class RAISR:
         h *= self.up_factor
         w *= self.up_factor
 
-        img_upscaled = cv.resize(image, (w, h))
+        img_upscaled = cv.resize(image, (w, h), interpolation=cv.INTER_LINEAR)
         if self.H is None:
             raise Exception("The model have not learned the filters")
 
